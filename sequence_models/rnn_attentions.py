@@ -47,6 +47,48 @@ class EncoderRNN(nn.Module):
         return output, hidden
 
 
+class AttentionDecoderRNN(nn.Module):
+    def __init__(self, attention_model, embedding, hidden_size, output_size, n_layers=1, dropout=0.1):
+        super(AttentionDecoderRNN, self).__init__()
+        self.attention_model = attention_model
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        self.n_layers = n_layers
+        self.dropout = dropout
+
+        # 1. Define Layers
+        self.embedding = embedding
+        self.embedding_dropout = nn.Dropout(dropout)
+        self.gru = nn.GRU(hidden_size, hidden_size, n_layers, dropout=(0 if n_layers==1 else dropout))
+        self.concat_layer = nn.Linear(hidden_size*2, hidden_size)
+        self.output_layer = nn.Linear(hidden_size, output_size)
+        self.attention = Attention(self.attention_model, hidden_size)
+
+    def forward(self, input_step, last_hidden, encoder_outputs):
+
+        embedded = self.embedding(input_step)
+        embedded = self.embedding_dropout(embedded)
+
+        rnn_output, hidden = self.gru(embedded, last_hidden)
+
+        attention_weights = self.attention(hidden, encoder_outputs)
+
+        # (batch, 1, length) x (max_length, batch, hidden)
+        context = torch.einsum('b t l, l b h -> t b h', attention_weights, encoder_outputs)
+
+        rnn_output = rnn_output.squeeze(0) # (b, h)
+        context = context.squeeze(0) # (b, h)
+
+        concat_input = torch.cat((rnn_output, context), dim=1) # (b, 2h)
+        concat_output = torch.tanh(self.concat_layer(concat_input)) # (b, h)
+
+        output = self.output_layer(concat_output) # (b, out)
+        output = F.softmax(output, dim=1)
+
+        return output, hidden 
+
+
+
 class Attention(nn.Module):
     def __init__(self, method, hidden_size):
         super(Attention, self).__init__()
