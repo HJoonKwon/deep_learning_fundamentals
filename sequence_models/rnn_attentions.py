@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Optional
 
 
@@ -40,11 +41,48 @@ class EncoderRNN(nn.Module):
         output, _ = nn.utils.rnn.pack_padded_sequence(output)
 
         # 5. sum bidirectional gru outputs
-        output = output[:, :, :self.hidden_size] + output[:, :, self.hidden_size:]
+        output = output[:, :, :self.hidden_size] + \
+            output[:, :, self.hidden_size:]
 
         return output, hidden
 
 
-if __name__ == "__main__":
-    print('')
+class Attention(nn.Module):
+    def __init__(self, method, hidden_size):
+        super(Attention, self).__init__()
+        self.method = method
+        self.hidden_size = hidden_size
 
+    def forward(self, hidden: torch.Tensor, encoder_outputs: torch.Tensor) -> torch.Tensor:
+        """ Attention module for Decoder of GRU RNN model
+
+        Args:
+            hidden (torch.Tensor): hidden state from the corresponding decoder block,
+                                    shape = (1, batch_size, hidden_size)
+            encoder_outputs (torch.Tensor): concatenated encoder outputs
+                                    shape = (max_length, batch_size, hidden_size)
+
+        Returns:
+            torch.Tensor: Attention weights normalized by softmax
+        """
+
+        # 1. Dot product of hidden and encoder_outputs on hidden_size dimension
+        attention_weights = torch.einsum(
+            't b h, l b h -> t l b', hidden, encoder_outputs).squeeze(0)  # (max_length, batch)
+
+        # 2. Transpose
+        attention_weights = attention_weights.t()  # (batch, max_length)
+
+        # 3. Apply softmax to normalize the attention weights
+        return F.softmax(attention_weights, dim=1).unsqueeze(1)
+
+
+if __name__ == "__main__":
+    batch = 10
+    hidden_size = 20
+    length = 5
+    hidden = torch.randn(1, batch, hidden_size)
+    encoder_outputs = torch.randn(length, batch, hidden_size)
+    attention_module = Attention('self', hidden_size=hidden_size)
+    attention_weights = attention_module(hidden, encoder_outputs)
+    print(attention_weights.shape)
