@@ -65,17 +65,34 @@ class AttentionDecoderRNN(nn.Module):
         self.attention = Attention(self.attention_model, hidden_size)
 
     def forward(self, input_step, last_hidden, encoder_outputs):
+        """Forwarod method for the Decoder with Attention module
 
+        Args:
+            input_step (torch.Tensor): (1, N, H_in)
+            last_hidden (torch.Tensor): (D*n_layers, N, H_in)
+            encoder_outputs (torch.Tensor): (L, N, H_out)
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: return output and hidden
+        """
+
+        # 1. get input word's embedding at the current step
         embedded = self.embedding(input_step)
+
+        # 2. forward through the dropout layer
         embedded = self.embedding_dropout(embedded)
 
+        # 3. forward through the GRU and get gru output and hidden state
         rnn_output, hidden = self.gru(embedded, last_hidden)
 
+        # 4. calculate attention weights for hidden state / encoder outputs
         attention_weights = self.attention(hidden, encoder_outputs)
 
-        # (batch, 1, length) x (max_length, batch, hidden)
+        # 5. calculate context vector using attention weights and encoder outputs
+        # (batch, 1, length) x (max_length, batch, hidden) <- matmul in length dimension
         context = torch.einsum('b t l, l b h -> t b h', attention_weights, encoder_outputs)
 
+        # 6. concatenate the gru output and context vector, and forward through the linear layers
         rnn_output = rnn_output.squeeze(0) # (b, h)
         context = context.squeeze(0) # (b, h)
 
@@ -83,9 +100,11 @@ class AttentionDecoderRNN(nn.Module):
         concat_output = torch.tanh(self.concat_layer(concat_input)) # (b, h)
 
         output = self.output_layer(concat_output) # (b, out)
+
+        # 7. apply softmax to calculate probability distribution of vocab
         output = F.softmax(output, dim=1)
 
-        return output, hidden 
+        return output, hidden
 
 
 
