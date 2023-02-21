@@ -10,7 +10,7 @@ import torch.nn.functional as F
 2. https://theaisummer.com/einsum-attention
 '''
 
-class SelfAttentionBlock(nn):
+class SelfAttentionBlock(nn.Module):
 
     def __init__(self, dim_embedding, dim_query, dim_value):
         super().__init__()
@@ -40,9 +40,10 @@ class SelfAttentionBlock(nn):
         return torch.einsum('b i j, b j d -> b i d', attention_weights, v)
 
 
-class MultiHeadSelfAttentionBlock(nn):
+class MultiHeadSelfAttentionBlock(nn.Module):
 
     def __init__(self, dim_embedding, num_heads, dim_head=None):
+        super().__init__()
         # paper; dim_q = dim_k = dim_v = dim_embedding/num_heads
         self.num_heads = num_heads
         self.dim_embedding = dim_embedding
