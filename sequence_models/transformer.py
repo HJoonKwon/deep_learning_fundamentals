@@ -2,9 +2,13 @@ import einops
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-# https://arxiv.labs.arxiv.org/html/1706.03762
-# https://theaisummer.com/einsum-attention/
+'''
+<Rereferences>
+1. https://arxiv.labs.arxiv.org/html/1706.03762
+2. https://theaisummer.com/einsum-attention
+'''
 
 class SelfAttentionBlock(nn):
 
@@ -31,7 +35,7 @@ class SelfAttentionBlock(nn):
             assert mask.shape == attention_scores.shape[1:]
             attention_scores = attention_scores.masked_fill(mask, -np.inf)
 
-        attention_weights = torch.softmax(attention_scores)
+        attention_weights = F.softmax(attention_scores, dim=-1)
 
         return torch.einsum('b i j, b j d -> b i d', attention_weights, v)
 
@@ -51,7 +55,6 @@ class MultiHeadSelfAttentionBlock(nn):
                                        dim_embedding,
                                        bias=False)
 
-
         # batch x tokens x heads x d
         # concat -> batch x tokens x (d*heads)
         # linear layer: (d*heads) -> d
@@ -64,6 +67,8 @@ class MultiHeadSelfAttentionBlock(nn):
         if mask is not None:
             assert mask.shape == attention_scores.shape[2:]
             attention_scores = attention_scores.masked_fill(mask, -np.inf)
-
-
-        pass
+        attention_weights = torch.softmax(attention_scores, dim=-1)
+        attention_output = torch.einsum('b h i j, b h j d -> b h i d', attention_weights, v)
+        concat = einops.rearrange(attention_output, 'b h t d -> b t (h d)')
+        final = self.concat_linear(concat)
+        return final
