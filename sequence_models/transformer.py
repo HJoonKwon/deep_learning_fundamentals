@@ -97,3 +97,14 @@ class TransformerEncoderBlock(nn.Module):
         y_ffn = self.ffn(y)
         y_ffn = self.lnorm2(y_ffn + y)
         return y_ffn
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, num_blocks, dim_embedding, num_heads, dim_linear, dropout):
+        super().__init__()
+        self.block_list = [TransformerEncoderBlock(dim_embedding, num_heads, dim_linear, dropout) for _ in range(num_blocks)]
+        self.module_list = nn.ModuleList(self.block_list)
+
+    def forward(self, x, mask=None):
+        for module in self.module_list:
+            y = module(x, mask)
+        return y
