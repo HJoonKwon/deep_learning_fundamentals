@@ -73,3 +73,27 @@ class MultiHeadSelfAttentionBlock(nn.Module):
         concat = einops.rearrange(attention_output, 'b h t d -> b t (h d)')
         final = self.concat_linear(concat)
         return final
+
+class TransformerEncoderBlock(nn.Module):
+    def __init__(self, dim_embedding, num_heads, dim_linear = 1024, dropout=0.1):
+        super().__init__()
+        self.dim_embedding = dim_embedding
+        self.num_heads = num_heads
+        self.mhsa = MultiHeadSelfAttentionBlock(self.dim_embedding, self.num_heads)
+        self.dropout = nn.Dropout(dropout)
+        self.lnorm1 = nn.LayerNorm(dim_embedding)
+        self.lnorm2 = nn.LayerNorm(dim_embedding)
+        self.ffn = nn.Sequential(
+            nn.Linear(dim_embedding, dim_linear),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_linear, dim_embedding),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x, mask=None):
+        y = self.dropout(self.mhsa(x, mask))
+        y = self.lnorm1(y + x)
+        y_ffn = self.ffn(y)
+        y_ffn = self.lnorm2(y_ffn + y)
+        return y_ffn
