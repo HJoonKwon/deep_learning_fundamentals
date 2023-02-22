@@ -63,4 +63,9 @@ class VisionTransformer(nn.Moudle):
         embed_patches = self.embed_dropout(embed_patches)
 
         y = self.transformer(embed_patches)
-        
+
+        if self.classification:
+            return self.mlp_head(y[:, 0, :])
+        else:
+            return y
+
