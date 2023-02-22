@@ -19,3 +19,15 @@ def test_self_attention_block():
     assert output.shape == (batch_size, tokens, dim_value)
 
 
+def test_multi_head_attention_block():
+    batch_size = 4
+    tokens = 5
+    dim_embedding = 64
+    num_heads = 4
+    x = torch.randn(batch_size, tokens, dim_embedding)
+
+    block = MultiHeadSelfAttentionBlock(dim_embedding,
+                                        num_heads)
+    output = block(x)
+    assert output.shape == (batch_size, tokens, dim_embedding)
+
