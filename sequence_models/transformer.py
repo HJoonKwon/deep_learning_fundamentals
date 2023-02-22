@@ -62,8 +62,8 @@ class MultiHeadSelfAttentionBlock(nn.Module):
 
     def forward(self, x, mask=None):
         qkv = self.embedding_to_qkv(x)
-        q, k, v = tuple(einops.rearrange(qkv, 'b t (k h d) -> k b t h d', k=3))
-        attention_scores = torch.einsum('b i h d, b j h d -> b h i j', q, k) * self.scale_factor
+        q, k, v = tuple(einops.rearrange(qkv, 'b t (k h d) -> k b h t d', k=3, h=self.num_heads))
+        attention_scores = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale_factor
 
         if mask is not None:
             assert mask.shape == attention_scores.shape[2:]
