@@ -31,3 +31,19 @@ def test_multi_head_attention_block():
     output = block(x)
     assert output.shape == (batch_size, tokens, dim_embedding)
 
+
+def test_transformer_encoder_block():
+    batch_size = 4
+    tokens = 5
+    dim_embedding = 64
+    num_heads = 4
+    dim_linear = 1024
+    dropout = 0.1
+    x = torch.randn(batch_size, tokens, dim_embedding)
+
+    block = TransformerEncoderBlock(dim_embedding,
+                                    num_heads,
+                                    dim_linear,
+                                    dropout)
+    output = block(x)
+    assert output.shape == (batch_size, tokens, dim_embedding)
