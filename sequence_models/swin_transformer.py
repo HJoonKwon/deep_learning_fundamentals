@@ -40,7 +40,8 @@ class PatchEmbedding(nn.Module):
                  img_size=224,
                  patch_dim=4,
                  in_channels=3,
-                 dim_embed=512) -> None:
+                 dim_embed=512,
+                 norm_layer=None) -> None:
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_dim = to_2tuple(patch_dim)
@@ -58,10 +59,17 @@ class PatchEmbedding(nn.Module):
         self.embedding = nn.Conv2d(
             in_channels, dim_embed, kernel_size=self.patch_dim, stride=self.patch_dim)
 
+        if norm_layer is not None:
+            self.norm_layer = norm_layer(dim_embed)
+        else:
+            self.norm_layer = None
+
     def forward(self, x):
         B, C, H, W = x.shape
         embedded = self.embedding(x) # B x dim_embed x patches_resolution[0] x patches_resolution[1]
         flattened = einops.rearrange(embedded, 'b d ph pw -> b (ph pw) d')
+        if self.norm_layer is not None:
+            flattened = self.norm_layer(flattened)
         return flattened
 
 
