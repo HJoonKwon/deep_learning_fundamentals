@@ -56,12 +56,14 @@ class PatchEmbedding(nn.Module):
                  in_channels=3,
                  dim_embed=512) -> None:
         super().__init__()
-        self.img_size = to_2tuple(img_size)
-        self.patch_dim = to_2tuple(patch_dim)
+        img_size = to_2tuple(img_size)
+        patch_dim = to_2tuple(patch_dim)
         patches_resolution = [img_size[0] //
                               patch_dim[0], img_size[1]//patch_dim[1]]
         num_patches = patches_resolution[0] * patches_resolution[1]
         dim_patch = patch_dim[0] * patch_dim[1] * in_channels
+        self.img_size = img_size
+        self.patch_dim = patch_dim
         self.patches_resolution = patches_resolution
         self.num_patches = num_patches
         self.dim_patch = dim_patch
@@ -73,7 +75,7 @@ class PatchEmbedding(nn.Module):
     def forward(self, x):
         B, C, H, W = x.shape
         embedded = self.embedding(x) # B x dim_embed x patches_resolution[0] x patches_resolution[1]
-        flattened = einops.rearrange(embedded, 'b d ph pw -> b (ph pw d)')
+        flattened = einops.rearrange(embedded, 'b d ph pw -> b (ph pw) d')
         return flattened
 
 
