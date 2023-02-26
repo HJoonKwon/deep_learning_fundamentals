@@ -7,6 +7,7 @@ import torch.nn as nn
 1. https://arxiv.org/abs/2103.14030
 2. https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
 3. https://towardsdatascience.com/a-comprehensive-guide-to-swin-transformer-64965f89d14c
+4. https://github.com/huggingface/pytorch-image-models/blob/450b4affbd73393ee02b075d6298ef29b2eca74/timm/layers/helpers.py#L10
 '''
 
 def window_partition():
