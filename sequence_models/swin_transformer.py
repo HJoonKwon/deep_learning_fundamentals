@@ -1,29 +1,15 @@
-import collections
-from itertools import repeat
 import torch
 import torch.nn as nn
 import einops
 
+from .utils import *
 
 '''
 <Rereferences>
 1. https://arxiv.org/abs/2103.14030
 2. https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
 3. https://towardsdatascience.com/a-comprehensive-guide-to-swin-transformer-64965f89d14c
-4. https://github.com/huggingface/pytorch-image-models/blob/450b4affbd73393ee02b075d6298ef29b2eca74/timm/layers/helpers.py#L10
 '''
-
-
-def _ntuple(n):
-    def parse(x):
-        if isinstance(x, collections.abc.Iterable) and not isinstance(x, str):
-            return tuple(x)
-        return tuple(repeat(x, n))
-    return parse
-
-
-to_2tuple = _ntuple(2)
-
 
 def window_partition():
     pass
