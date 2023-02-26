@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import einops
-from transformer import TransformerEncoder
+from .transformer import TransformerEncoder
 
-class VisionTransformer(nn.Moudle):
+class VisionTransformer(nn.Module):
     def __init__(self,
                  img_size,
                  patch_dim=16,
@@ -52,12 +52,12 @@ class VisionTransformer(nn.Moudle):
 
     def forward(self, x, mask=None):
         batch = x.shape[0]
-        flattened_patches = einops.rearrange(x, 'b c (patch_w m) (patch_h n)-> b (mn) (patch_w patch_h c)', m=self.num_patch_w, n=self.num_patch_h)
+        flattened_patches = einops.rearrange(x, 'b c (patch_w m) (patch_h n)-> b (m n) (patch_w patch_h c)', m=self.num_patch_w, n=self.num_patch_h)
         embed_patches = self.projection(flattened_patches) # (batch, num_tokens, dim_embed)
 
         if self.classification:
             cls_token_batch = self.cls_token.expand([batch, -1, self.dim_embed])
-            embed_patches = torch.concat(embed_patches, cls_token_batch, dim=1) # (batch, num_tokens+1, dim_embed)
+            embed_patches = torch.concat((embed_patches, cls_token_batch), dim=1) # (batch, num_tokens+1, dim_embed)
 
         embed_patches += self.pos_emb1D
         embed_patches = self.embed_dropout(embed_patches)
