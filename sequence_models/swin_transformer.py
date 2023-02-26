@@ -9,6 +9,7 @@ from .utils import *
 1. https://arxiv.org/abs/2103.14030
 2. https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
 3. https://towardsdatascience.com/a-comprehensive-guide-to-swin-transformer-64965f89d14c
+4. https://github.com/huggingface/transformers/blob/v4.26.1/src/transformers/models/swin/modeling_swin.py
 '''
 
 def window_partition():
