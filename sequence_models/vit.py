@@ -4,6 +4,13 @@ import torch.nn.functional as F
 import einops
 from .transformer import TransformerEncoder
 
+
+'''
+<Rereferences>
+1. https://arxiv.labs.arxiv.org/html/2010.11929
+2. https://theaisummer.com/vision-transformer/
+'''
+
 class VisionTransformer(nn.Module):
     def __init__(self,
                  img_size,
