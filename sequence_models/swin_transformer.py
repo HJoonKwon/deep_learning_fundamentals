@@ -105,11 +105,60 @@ class PatchEmbedding(nn.Module):
 
 
 class WindowMultiHeadSelfAttention(nn.Module):
-    def __init__(self) -> None:
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.) -> None:
         super().__init__()
+        self.dim = dim
+        self.window_size = window_size
+        self.num_heads = num_heads
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
-        pass
+        dim_head = dim // num_heads
+        self.scale = dim_head ** -0.5 if qk_scale is None else qk_scale
+        self.embedding_to_qkv = nn.Linear(dim, dim_head * num_heads * 3, bias=qkv_bias)
+        self.softmax = nn.Softmax(dim=-1)
+        self.concat_linear =  nn.Linear(num_heads * dim_head, dim)
+
+
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+
+        ##TODO:: add relative position bias
+        
+        qkv = self.embedding_to_qkv(x)
+        q, k, v = tuple(einops.rearrange(qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
+        attentions = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+
+        if mask is not None:
+            num_windows = mask.shape[0]
+            attentions = einops.rearrange(attentions, '(num_w B) h i j -> B num_w h i j', num_w=num_windows)
+            mask = mask.unsqueeze(1).unsqueeze(0)
+            attentions += mask
+            attentions = einops.rearrange(attentions, 'B num_w h i j -> (num_w B) h i j')
+
+        attentions = self.softmax(attentions)
+        attentions = self.attn_drop(attentions)
+
+        attentions = torch.einsum('b h i j, b h j d -> b h i d', attentions, v)
+        attentions = einops.rearrange(attentions, 'b h i d -> b i (h d)')
+        attentions = self.concat_linear(attentions)
+        attentions = self.proj_drop(attentions)
+        return attentions
 
 
 class ShiftedWindowMultiHeadSelfAttention(nn.Module):
