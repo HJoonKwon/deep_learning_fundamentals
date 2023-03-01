@@ -66,7 +66,7 @@ class MultiHeadSelfAttentionBlock(nn.Module):
         attention_scores = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale_factor
 
         if mask is not None:
-            assert mask.shape == attention_scores.shape[2:]
+            assert mask.shape == attention_scores.shape[2:-1]
             attention_scores = attention_scores.masked_fill(mask, -np.inf)
         attention_weights = torch.softmax(attention_scores, dim=-1)
         attention_output = torch.einsum('b h i j, b h j d -> b h i d', attention_weights, v)
