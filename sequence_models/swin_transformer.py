@@ -12,6 +12,7 @@ from .utils import *
 4. https://github.com/huggingface/transformers/blob/v4.26.1/src/transformers/models/swin/modeling_swin.py
 '''
 
+
 def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
     """
     Args:
@@ -21,12 +22,25 @@ def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
         windows: (num_windows*B, window_size, window_size, C)
     """
     B, H, W, C = x.shape
-    windows = einops.rearrange(x, 'b (w1 n1) (w2 n2) c -> (b n1 n2) w1 w2 c', w1=window_size, w2=window_size)
+    windows = einops.rearrange(
+        x, 'b (w1 n1) (w2 n2) c -> (b n1 n2) w1 w2 c', w1=window_size, w2=window_size)
     return windows
 
 
-def window_reverse():
-    pass
+def window_reverse(windows: torch.Tensor, window_size: int, H: int, W: int) -> torch.Tensor:
+    """
+    Args:
+        windows: (num_windows*B, window_size, window_size, C)
+        window_size (int): Window size
+        H (int): Height of image
+        W (int): Width of image
+    Returns:
+        x: (B, H, W, C)
+    """
+    n1, n2 = H//window_size, W//window_size
+    x = einops.rearrange(windows, '(b n1 n2) w1 w2 c -> b (n1 w1) (n2 w2) c',
+                         w1=window_size, w2=window_size, n1=n1, n2=n2)
+    return x
 
 
 class PatchMerging(nn.Module):
@@ -76,12 +90,12 @@ class PatchEmbedding(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape
-        embedded = self.embedding(x) # B x dim_embed x patches_resolution[0] x patches_resolution[1]
+        # B x dim_embed x patches_resolution[0] x patches_resolution[1]
+        embedded = self.embedding(x)
         flattened = einops.rearrange(embedded, 'b d ph pw -> b (ph pw) d')
         if self.norm_layer is not None:
             flattened = self.norm_layer(flattened)
         return flattened
-
 
 
 class WindowMultiHeadSelfAttention(nn.Module):
@@ -90,6 +104,7 @@ class WindowMultiHeadSelfAttention(nn.Module):
 
     def forward(self, x):
         pass
+
 
 class ShiftedWindowMultiHeadSelfAttention(nn.Module):
     def __init__(self) -> None:
