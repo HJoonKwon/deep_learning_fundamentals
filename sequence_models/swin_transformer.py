@@ -88,7 +88,13 @@ class PatchEmbedding(nn.Module):
         else:
             self.norm_layer = None
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (B, H, W, C)
+        Returns:
+            flattened: (B, patch_size x patch_size, dim_embed)
+        """
         B, C, H, W = x.shape
         # B x dim_embed x patches_resolution[0] x patches_resolution[1]
         embedded = self.embedding(x)
