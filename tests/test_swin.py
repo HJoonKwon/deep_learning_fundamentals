@@ -59,3 +59,10 @@ def test_window_partition():
     num_windows = 64
     windows = window_partition(x, window_size=ws)
     assert windows.shape == (B*num_windows, ws, ws, 3)
+
+def test_window_reverse():
+    B, H, W, C = 4, 224, 224, 3
+    ws = H//8
+    windows = torch.randn(B*64, ws, ws, 3)
+    x = window_reverse(windows, window_size=ws, H=H, W=W)
+    assert x.shape == (B, H, W, C)
