@@ -50,3 +50,12 @@ def test_patch_embedding():
                               patch_dim[0], img_size[1]//patch_dim[1]]
     num_patches = patches_resolution[0] * patches_resolution[1]
     assert output.shape == (batch_size, num_patches, dim_embed)
+
+
+def test_window_partition():
+    B, H, W, C = 4, 224, 224, 3
+    ws = H//8
+    x = torch.randn(B, H, W, C)
+    num_windows = 64
+    windows = window_partition(x, window_size=ws)
+    assert windows.shape == (B*num_windows, ws, ws, 3)
