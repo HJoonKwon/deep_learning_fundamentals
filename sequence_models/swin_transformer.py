@@ -12,6 +12,9 @@ from .utils import *
 4. https://github.com/huggingface/transformers/blob/v4.26.1/src/transformers/models/swin/modeling_swin.py
 '''
 
+def relative_position_index(window_size):
+    pass
+
 
 def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
     """
@@ -130,6 +133,15 @@ class WindowMultiHeadSelfAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         self.concat_linear =  nn.Linear(num_heads * dim_head, dim)
 
+        ##TODO:: add relative position bias
+        # ((2M-1)*(2M-1), c)
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros((2 * window_size[0] -1) *(2 * window_size[1] - 1), num_heads)
+        )
+        coords_h = torch.arange(self.window_size[0])
+        coords_w = torch.arange(self.window_size[1])
+        coords = torch.meshgrid([coords_h, coords_w])
+
 
     def forward(self, x, mask=None):
         """
@@ -139,7 +151,7 @@ class WindowMultiHeadSelfAttention(nn.Module):
         """
 
         ##TODO:: add relative position bias
-        
+
         qkv = self.embedding_to_qkv(x)
         q, k, v = tuple(einops.rearrange(qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
         attentions = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale

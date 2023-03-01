@@ -70,11 +70,12 @@ def test_window_reverse():
 def test_window_multi_head_self_attention():
     B, N, C = 4, 16, 64
     num_windows = 16
+    window_size = (4, 4)
     x = torch.randn(B*num_windows, N, C)
     mask = torch.randn(num_windows, N, N)
     model = WindowMultiHeadSelfAttention(
         dim=C,
-        window_size=4,
+        window_size=window_size,
         num_heads=4,
         attn_drop=0.1,
         proj_drop=0.1,
