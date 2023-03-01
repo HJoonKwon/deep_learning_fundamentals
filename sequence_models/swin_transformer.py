@@ -12,8 +12,17 @@ from .utils import *
 4. https://github.com/huggingface/transformers/blob/v4.26.1/src/transformers/models/swin/modeling_swin.py
 '''
 
-def window_partition():
-    pass
+def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
+    """
+    Args:
+        x: (B, H, W, C)
+        window_size (int): window size
+    Returns:
+        windows: (num_windows*B, window_size, window_size, C)
+    """
+    B, H, W, C = x.shape
+    windows = einops.rearrange(x, 'b (w1 n1) (w2 n2) c -> (b n1 n2) w1 w2 c', w1=window_size, w2=window_size)
+    return windows
 
 
 def window_reverse():
