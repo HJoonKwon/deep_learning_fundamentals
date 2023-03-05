@@ -22,6 +22,7 @@
 5. https://github.com/huggingface/transformers/blob/main/src/transformers/models/swin/modeling_swin.py
 '''
 
+import collections
 import torch
 import torch.nn as nn
 import einops
