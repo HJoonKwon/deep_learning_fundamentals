@@ -295,9 +295,17 @@ class SwinTransformerBlock(nn.Module):
             attn_mask = None
         return attn_mask
 
-
-
     def forward(self, x):
+        # x: (B, H*W, dim)
+        short_cut = x
+        x = self.norm1(x)
+        x = einops.rearrange(x, 'b (h w) c -> b h w c')
+        windows = window_partition(x, window_size=self.window_size) #(B*num_windows, Wh, Ww, C)
+        windows = einops.rearrange(windows, 'b Wh Ww c -> b (Wh Ww) c')
+        attn_windows = self.window_attn(windows)
+        
+
+
         pass
 
 
