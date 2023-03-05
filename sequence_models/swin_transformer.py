@@ -71,12 +71,20 @@ class PatchMerging(nn.Module):
 
 
 class Mlp(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, in_features, hidden_features, out_features, norm_layer=nn.GELU, drop=0.) -> None:
         super().__init__()
+        # self.layer = nn.Sequential()
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.norm_layer = norm_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
 
     def forward(self, x):
-        pass
-
+        x = self.fc1(x)
+        x = self.norm_layer(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
 
 class PatchEmbedding(nn.Module):
     def __init__(self,
