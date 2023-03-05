@@ -158,9 +158,12 @@ class WindowMultiHeadSelfAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         self.concat_linear =  nn.Linear(num_heads * dim_head, dim)
 
+        self.window_size = (
+            window_size if isinstance(window_size, collections.abc.Iterable) else (window_size, window_size)
+        )
         # ((2M-1)^2, h)
         self.relative_position_bias_table = nn.Parameter(
-            torch.zeros((2 * window_size[0] -1) *(2 * window_size[1] - 1), num_heads)
+            torch.zeros((2 * self.window_size[0] -1) *(2 * self.window_size[1] - 1), num_heads)
         )
         coords_h = torch.arange(self.window_size[0]) # (M,)
         coords_w = torch.arange(self.window_size[1]) # (M,)
