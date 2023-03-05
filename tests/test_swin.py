@@ -82,3 +82,13 @@ def test_window_multi_head_self_attention():
     )
     y = model(x, mask)
     assert y.shape == (B*num_windows, N, C)
+
+def test_mlp():
+    in_features = 10
+    hidden_features = 20
+    out_features = 10
+
+    x = torch.randn(in_features)
+    model = Mlp(in_features=in_features, hidden_features=hidden_features, out_features=out_features)
+    y = model(x)
+    assert y.shape == (out_features,)
