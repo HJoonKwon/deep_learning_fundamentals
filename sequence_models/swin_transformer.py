@@ -176,8 +176,8 @@ class WindowMultiHeadSelfAttention(nn.Module):
 
         # key, query, value -> attention score
         qkv = self.embedding_to_qkv(x)
-        q, k, v = tuple(einops.rearrange(qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
-        attentions = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+        query, key, value = tuple(einops.rearrange(qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
+        attention_scores = torch.einsum('b h i d, b h j d -> b h i j', query, key) * self.scale
 
         # relative position bias
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)]
@@ -186,19 +186,19 @@ class WindowMultiHeadSelfAttention(nn.Module):
         )
 
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # (h, M^2, M^2)
-        attentions = attentions + relative_position_bias.unsqueeze(0) # (1, h, M^2, M^2)
+        attention_scores = attention_scores + relative_position_bias.unsqueeze(0) # (1, h, M^2, M^2)
 
         if mask is not None:
             num_windows = mask.shape[0]
-            attentions = einops.rearrange(attentions, '(num_w B) h i j -> B num_w h i j', num_w=num_windows)
+            attention_scores = einops.rearrange(attention_scores, '(num_w B) h i j -> B num_w h i j', num_w=num_windows)
             mask = mask.unsqueeze(1).unsqueeze(0)
-            attentions += mask
-            attentions = einops.rearrange(attentions, 'B num_w h i j -> (num_w B) h i j')
+            attention_scores += mask
+            attention_scores = einops.rearrange(attention_scores, 'B num_w h i j -> (num_w B) h i j')
 
-        attention_probs = self.softmax(attentions)
+        attention_probs = self.softmax(attention_scores)
         attention_probs = self.attn_drop(attention_probs)
 
-        context = torch.einsum('b h i j, b h j d -> b h i d', attention_probs, v)
+        context = torch.einsum('b h i j, b h j d -> b h i d', attention_probs, value)
         context = einops.rearrange(context, 'b h i d -> b i (h d)')
         context = self.concat_linear(context)
         context = self.proj_drop(context)
