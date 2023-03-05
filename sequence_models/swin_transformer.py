@@ -149,28 +149,44 @@ class WindowMultiHeadSelfAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         self.concat_linear =  nn.Linear(num_heads * dim_head, dim)
 
-        ##TODO:: add relative position bias
-        # ((2M-1)*(2M-1), c)
+        # ((2M-1)^2, h)
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros((2 * window_size[0] -1) *(2 * window_size[1] - 1), num_heads)
         )
-        coords_h = torch.arange(self.window_size[0])
-        coords_w = torch.arange(self.window_size[1])
-        coords = torch.meshgrid([coords_h, coords_w])
+        coords_h = torch.arange(self.window_size[0]) # (M,)
+        coords_w = torch.arange(self.window_size[1]) # (M,)
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w], indexing="ij")) # (2, M, M)
+        coords_flatten = torch.flatten(coords, 1) # (2, M^2)
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :] # (2, M^2, M^2)
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous() # (M^2, M^2, 2)
+        relative_coords[:, :, 0] += self.window_size[0] - 1
+        relative_coords[:, :, 1] += self.window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
+        relative_position_index = relative_coords.sum(-1) # (M^2, M^2)
+        self.register_buffer("relative_position_index", relative_position_index)
 
 
     def forward(self, x, mask=None):
         """
         Args:
-            x: input features with shape of (num_windows*B, N, C)
+            x: input features with shape of (num_windows*B, N, H)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
 
-        ##TODO:: add relative position bias
 
+        # key, query, value -> attention score
         qkv = self.embedding_to_qkv(x)
         q, k, v = tuple(einops.rearrange(qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
         attentions = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+
+        # relative position bias
+        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)]
+        relative_position_bias = relative_position_bias.view(
+            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1
+        )
+
+        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # (h, M^2, M^2)
+        attentions = attentions + relative_position_bias.unsqueeze(0) # (1, h, M^2, M^2)
 
         if mask is not None:
             num_windows = mask.shape[0]
@@ -179,14 +195,14 @@ class WindowMultiHeadSelfAttention(nn.Module):
             attentions += mask
             attentions = einops.rearrange(attentions, 'B num_w h i j -> (num_w B) h i j')
 
-        attentions = self.softmax(attentions)
-        attentions = self.attn_drop(attentions)
+        attention_probs = self.softmax(attentions)
+        attention_probs = self.attn_drop(attention_probs)
 
-        attentions = torch.einsum('b h i j, b h j d -> b h i d', attentions, v)
-        attentions = einops.rearrange(attentions, 'b h i d -> b i (h d)')
-        attentions = self.concat_linear(attentions)
-        attentions = self.proj_drop(attentions)
-        return attentions
+        context = torch.einsum('b h i j, b h j d -> b h i d', attention_probs, v)
+        context = einops.rearrange(context, 'b h i d -> b i (h d)')
+        context = self.concat_linear(context)
+        context = self.proj_drop(context)
+        return context
 
 
 class ShiftedWindowMultiHeadSelfAttention(nn.Module):
