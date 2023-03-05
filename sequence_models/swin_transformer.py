@@ -76,7 +76,7 @@ class Mlp(nn.Module):
         super().__init__()
         # self.layer = nn.Sequential()
         self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act_layer = norm_layer()
+        self.act_layer = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
 
