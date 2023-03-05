@@ -264,8 +264,36 @@ class SwinTransformerBlock(nn.Module):
         # stochastic depth
         # https://towardsdatascience.com/review-stochastic-depth-image-classification-a4e225807f4a
         self.drop_path = DropPath(drop_prob=drop_path, scale_by_keep=True) if drop_path > 0 else nn.Identity()
-        
 
+        self.shift_size = shift_size
+        self.window_size = window_size
+
+    def get_attn_mask(self, height, width, dtype):
+        if self.shift_size > 0:
+            image_mask = torch.zeros((1, height, width, 1), dtype=dtype)
+
+            # define slices to create sub windows
+            h_slices = (slice(0, -self.window_size),
+                        slice(-self.window_size, -self.shift_size),
+                        slice(-self.shift_size, None))
+            w_slices = (slice(0, -self.window_size),
+                        slice(-self.window_size, -self.shift_size),
+                        slice(-self.shift_size, None))
+
+            # assign each area a distinct number
+            area_num = 0
+            for h_slice in h_slices:
+                for w_slice in w_slices:
+                    image_mask[:, h_slice, w_slice, :] = area_num
+                    area_num += 1
+
+            mask_windows = window_partition(image_mask, window_size=self.window_size) # (N, Wh, Ww, 1)
+            mask_windows = einops.rearrange(mask_windows, 'n wh ww c -> n (wh ww c)')
+            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2) # 0 for corresnponding sub-window, (N, Wh*Ww, Wh*Ww)
+            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask ==0, float(0.0))
+        else:
+            attn_mask = None
+        return attn_mask
 
 
 
