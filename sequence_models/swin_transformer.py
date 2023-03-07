@@ -242,7 +242,8 @@ class SwinTransformerBlock(nn.Module):
         act_layer (nn.Module, optional): Activation layer. Default: nn.GELU
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
-    def __init__(self) -> None:
+    def __init__(self, dim, input_resolution, num_heads, window_size, shift_size, mlp_ratio,
+                 qkv_bias, qk_scale, drop, attn_drop, drop_path, act_layer, norm_layer) -> None:
         super().__init__()
 
         # Define modules to build a Swin block
@@ -267,6 +268,7 @@ class SwinTransformerBlock(nn.Module):
 
         self.shift_size = shift_size
         self.window_size = window_size
+        self.input_resolution = input_resolution
 
     def get_attn_mask(self, height, width, dtype):
         if self.shift_size > 0:
@@ -296,17 +298,49 @@ class SwinTransformerBlock(nn.Module):
         return attn_mask
 
     def forward(self, x):
+
         # x: (B, H*W, dim)
         short_cut = x
         x = self.norm1(x)
-        x = einops.rearrange(x, 'b (h w) c -> b h w c')
+
+        # rearrange input for window partition
+        x = einops.rearrange(x, 'b (h w) c -> b h w c', h=self.input_resolution[0], w=self.input_resolution[1])
+        B, h, w, dim = x.shape
+
+        # TODO:: pad hidden_states to multiples of window size
+
+        # cyclic shift
+        if self.shift_size > 0:
+            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+        else:
+            shifted_x = x
+
+        # partition windows
         windows = window_partition(x, window_size=self.window_size) #(B*num_windows, Wh, Ww, C)
         windows = einops.rearrange(windows, 'b Wh Ww c -> b (Wh Ww) c')
-        attn_windows = self.window_attn(windows)
-        
 
+        # get attention mask and do shifted window MHS
+        attn_mask = self.get_attn_mask(h, w, dtype=shifted_x.dtype)
+        if attn_mask is not None:
+            attn_mask = attn_mask.to(shifted_x.device)
+        attn_windows = self.window_attn(windows, mask=attn_mask)
 
-        pass
+        # rearrange attention windows to reverse it to input size
+        attn_windows = einops.rearrange(attn_windows, 'b (Wh Ww) c -> b Wh Ww c', Wh=self.window_size, Ww=self.window_size)
+        shifted_attn_windows = window_reverse(attn_windows, self.window_size, h, w)
+
+        if self.shift_size > 0:
+            attn_windows = torch.roll(shifted_attn_windows, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+        else:
+            attn_windows = shifted_attn_windows
+
+        attn_windows = einops.rearrange(attn_windows, 'b Wh Ww c -> b (Wh Ww) c')
+
+        # apply stochastic depth
+        hidden_states = short_cut + self.drop_path(attn_windows)
+
+        output = self.drop_path(self.mlp(self.norm2(hidden_states))) + hidden_states
+        return output
 
 
 class SwinTransformerStage(nn.Module):
