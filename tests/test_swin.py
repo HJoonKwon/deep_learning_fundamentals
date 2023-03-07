@@ -92,3 +92,38 @@ def test_mlp():
     model = Mlp(in_features=in_features, hidden_features=hidden_features, out_features=out_features)
     y = model(x)
     assert y.shape == (out_features,)
+
+def test_swin_transformer_block():
+    dim = 48
+    input_resolution = (56, 56)
+    num_heads = 4
+    window_size = 7
+    shift_size = window_size // 2
+    mlp_ratio = 2
+    qkv_bias = True
+    qk_scale = None
+    drop = .1
+    attn_drop = .1
+    drop_path = 0.2
+    act_layer = nn.GELU
+    norm_layer = nn.LayerNorm
+
+    swin_block = SwinTransformerBlock(
+        dim=dim,
+        input_resolution=input_resolution,
+        num_heads=num_heads,
+        window_size=window_size,
+        shift_size=shift_size,
+        mlp_ratio=mlp_ratio,
+        qkv_bias=qkv_bias,
+        qk_scale=qk_scale,
+        drop=drop,
+        attn_drop=attn_drop,
+        drop_path=drop_path,
+        act_layer=act_layer,
+        norm_layer=norm_layer
+    )
+
+    x = torch.randn(4, 56*56, dim)
+    y = swin_block(x)
+    assert y.shape == (4, 56*56, dim)
