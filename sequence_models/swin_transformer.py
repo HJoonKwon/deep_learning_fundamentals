@@ -29,6 +29,7 @@ import einops
 
 from .utils import *
 
+
 def relative_position_index(window_size):
     pass
 
@@ -64,11 +65,34 @@ def window_reverse(windows: torch.Tensor, window_size: int, H: int, W: int) -> t
 
 
 class PatchMerging(nn.Module):
-    def __init__(self) -> None:
+    r""" Patch Merging Layer.
+    Args:
+        input_resolution (tuple[int]): Resolution of input feature.
+        dim (int): Number of input channels.
+        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
+    """
+
+    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm) -> None:
         super().__init__()
+        self.input_resolution = input_resolution
+        self.dim = dim
+        self.channel_reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.norm_layer = norm_layer(4 * dim)
 
     def forward(self, x):
-        pass
+        """
+        x: B, H*W, C
+        """
+        B, L, C = x.shape
+        H, W = self.input_resolution
+        assert L == H * W, f"Wrong input size {H}x{W} != {L}"
+        assert H % 2 == 0 and W % 2 == 0, f"Cannot merge patches since ({H}x{W} are not even)"
+        x = einops.rearrange(x, 'b (h w) c -> b h w c', h=H, w=W)
+        x = einops.rearrange(x, 'b (k1 n1) (k2 n2) c -> b (n1 n2) k1 k2 c', k1=2, k2=2)
+        x = einops.rearrange(x, 'b n k1 k2 c -> b n (k1 k2 c)')
+        x = self.channel_reduction(self.norm_layer(x))
+
+        return x
 
 
 class Mlp(nn.Module):
@@ -86,6 +110,7 @@ class Mlp(nn.Module):
         x = self.fc2(x)
         x = self.drop(x)
         return x
+
 
 class PatchEmbedding(nn.Module):
     def __init__(self,
@@ -144,6 +169,7 @@ class WindowMultiHeadSelfAttention(nn.Module):
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
+
     def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.) -> None:
         super().__init__()
         self.dim = dim
@@ -154,29 +180,35 @@ class WindowMultiHeadSelfAttention(nn.Module):
 
         dim_head = dim // num_heads
         self.scale = dim_head ** -0.5 if qk_scale is None else qk_scale
-        self.embedding_to_qkv = nn.Linear(dim, dim_head * num_heads * 3, bias=qkv_bias)
+        self.embedding_to_qkv = nn.Linear(
+            dim, dim_head * num_heads * 3, bias=qkv_bias)
         self.softmax = nn.Softmax(dim=-1)
-        self.concat_linear =  nn.Linear(num_heads * dim_head, dim)
+        self.concat_linear = nn.Linear(num_heads * dim_head, dim)
 
         self.window_size = (
-            window_size if isinstance(window_size, collections.abc.Iterable) else (window_size, window_size)
+            window_size if isinstance(window_size, collections.abc.Iterable) else (
+                window_size, window_size)
         )
         # ((2M-1)^2, h)
         self.relative_position_bias_table = nn.Parameter(
-            torch.zeros((2 * self.window_size[0] -1) *(2 * self.window_size[1] - 1), num_heads)
+            torch.zeros(
+                (2 * self.window_size[0] - 1) * (2 * self.window_size[1] - 1), num_heads)
         )
-        coords_h = torch.arange(self.window_size[0]) # (M,)
-        coords_w = torch.arange(self.window_size[1]) # (M,)
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w], indexing="ij")) # (2, M, M)
-        coords_flatten = torch.flatten(coords, 1) # (2, M^2)
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :] # (2, M^2, M^2)
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous() # (M^2, M^2, 2)
+        coords_h = torch.arange(self.window_size[0])  # (M,)
+        coords_w = torch.arange(self.window_size[1])  # (M,)
+        coords = torch.stack(torch.meshgrid(
+            [coords_h, coords_w], indexing="ij"))  # (2, M, M)
+        coords_flatten = torch.flatten(coords, 1)  # (2, M^2)
+        relative_coords = coords_flatten[:, :, None] - \
+            coords_flatten[:, None, :]  # (2, M^2, M^2)
+        relative_coords = relative_coords.permute(
+            1, 2, 0).contiguous()  # (M^2, M^2, 2)
         relative_coords[:, :, 0] += self.window_size[0] - 1
         relative_coords[:, :, 1] += self.window_size[1] - 1
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
-        relative_position_index = relative_coords.sum(-1) # (M^2, M^2)
-        self.register_buffer("relative_position_index", relative_position_index)
-
+        relative_position_index = relative_coords.sum(-1)  # (M^2, M^2)
+        self.register_buffer("relative_position_index",
+                             relative_position_index)
 
     def forward(self, x, mask=None):
         """
@@ -185,32 +217,40 @@ class WindowMultiHeadSelfAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
 
-
         # key, query, value -> attention score
         qkv = self.embedding_to_qkv(x)
-        query, key, value = tuple(einops.rearrange(qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
-        attention_scores = torch.einsum('b h i d, b h j d -> b h i j', query, key) * self.scale
+        query, key, value = tuple(einops.rearrange(
+            qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
+        attention_scores = torch.einsum(
+            'b h i d, b h j d -> b h i j', query, key) * self.scale
 
         # relative position bias
-        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)]
+        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(
+            -1)]
         relative_position_bias = relative_position_bias.view(
-            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1
+            self.window_size[0] * self.window_size[1], self.window_size[0] *
+            self.window_size[1], -1
         )
 
-        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # (h, M^2, M^2)
-        attention_scores = attention_scores + relative_position_bias.unsqueeze(0) # (1, h, M^2, M^2)
+        relative_position_bias = relative_position_bias.permute(
+            2, 0, 1).contiguous()  # (h, M^2, M^2)
+        attention_scores = attention_scores + \
+            relative_position_bias.unsqueeze(0)  # (1, h, M^2, M^2)
 
         if mask is not None:
             num_windows = mask.shape[0]
-            attention_scores = einops.rearrange(attention_scores, '(num_w B) h i j -> B num_w h i j', num_w=num_windows)
+            attention_scores = einops.rearrange(
+                attention_scores, '(num_w B) h i j -> B num_w h i j', num_w=num_windows)
             mask = mask.unsqueeze(1).unsqueeze(0)
             attention_scores += mask
-            attention_scores = einops.rearrange(attention_scores, 'B num_w h i j -> (num_w B) h i j')
+            attention_scores = einops.rearrange(
+                attention_scores, 'B num_w h i j -> (num_w B) h i j')
 
         attention_probs = self.softmax(attention_scores)
         attention_probs = self.attn_drop(attention_probs)
 
-        context = torch.einsum('b h i j, b h j d -> b h i d', attention_probs, value)
+        context = torch.einsum(
+            'b h i j, b h j d -> b h i d', attention_probs, value)
         context = einops.rearrange(context, 'b h i d -> b i (h d)')
         context = self.concat_linear(context)
         context = self.proj_drop(context)
@@ -242,6 +282,7 @@ class SwinTransformerBlock(nn.Module):
         act_layer (nn.Module, optional): Activation layer. Default: nn.GELU
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
+
     def __init__(self, dim, input_resolution, num_heads, window_size, shift_size, mlp_ratio,
                  qkv_bias, qk_scale, drop, attn_drop, drop_path, act_layer, norm_layer) -> None:
         super().__init__()
@@ -264,7 +305,8 @@ class SwinTransformerBlock(nn.Module):
 
         # stochastic depth
         # https://towardsdatascience.com/review-stochastic-depth-image-classification-a4e225807f4a
-        self.drop_path = DropPath(drop_prob=drop_path, scale_by_keep=True) if drop_path > 0 else nn.Identity()
+        self.drop_path = DropPath(
+            drop_prob=drop_path, scale_by_keep=True) if drop_path > 0 else nn.Identity()
 
         self.shift_size = shift_size
         self.window_size = window_size
@@ -289,10 +331,14 @@ class SwinTransformerBlock(nn.Module):
                     image_mask[:, h_slice, w_slice, :] = area_num
                     area_num += 1
 
-            mask_windows = window_partition(image_mask, window_size=self.window_size) # (N, Wh, Ww, 1)
-            mask_windows = einops.rearrange(mask_windows, 'n wh ww c -> n (wh ww c)')
-            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2) # 0 for corresnponding sub-window, (N, Wh*Ww, Wh*Ww)
-            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask ==0, float(0.0))
+            mask_windows = window_partition(
+                image_mask, window_size=self.window_size)  # (N, Wh, Ww, 1)
+            mask_windows = einops.rearrange(
+                mask_windows, 'n wh ww c -> n (wh ww c)')
+            # 0 for corresnponding sub-window, (N, Wh*Ww, Wh*Ww)
+            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+            attn_mask = attn_mask.masked_fill(
+                attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
             attn_mask = None
         return attn_mask
@@ -304,19 +350,22 @@ class SwinTransformerBlock(nn.Module):
         x = self.norm1(x)
 
         # rearrange input for window partition
-        x = einops.rearrange(x, 'b (h w) c -> b h w c', h=self.input_resolution[0], w=self.input_resolution[1])
+        x = einops.rearrange(x, 'b (h w) c -> b h w c',
+                             h=self.input_resolution[0], w=self.input_resolution[1])
         B, h, w, dim = x.shape
 
         # TODO:: pad hidden_states to multiples of window size
 
         # cyclic shift
         if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_x = torch.roll(
+                x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
 
         # partition windows
-        windows = window_partition(x, window_size=self.window_size) #(B*num_windows, Wh, Ww, C)
+        # (B*num_windows, Wh, Ww, C)
+        windows = window_partition(x, window_size=self.window_size)
         windows = einops.rearrange(windows, 'b Wh Ww c -> b (Wh Ww) c')
 
         # get attention mask and do shifted window MHS
@@ -326,20 +375,25 @@ class SwinTransformerBlock(nn.Module):
         attn_windows = self.window_attn(windows, mask=attn_mask)
 
         # rearrange attention windows to reverse it to input size
-        attn_windows = einops.rearrange(attn_windows, 'b (Wh Ww) c -> b Wh Ww c', Wh=self.window_size, Ww=self.window_size)
-        shifted_attn_windows = window_reverse(attn_windows, self.window_size, h, w)
+        attn_windows = einops.rearrange(
+            attn_windows, 'b (Wh Ww) c -> b Wh Ww c', Wh=self.window_size, Ww=self.window_size)
+        shifted_attn_windows = window_reverse(
+            attn_windows, self.window_size, h, w)
 
         if self.shift_size > 0:
-            attn_windows = torch.roll(shifted_attn_windows, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+            attn_windows = torch.roll(shifted_attn_windows, shifts=(
+                self.shift_size, self.shift_size), dims=(1, 2))
         else:
             attn_windows = shifted_attn_windows
 
-        attn_windows = einops.rearrange(attn_windows, 'b Wh Ww c -> b (Wh Ww) c')
+        attn_windows = einops.rearrange(
+            attn_windows, 'b Wh Ww c -> b (Wh Ww) c')
 
         # apply stochastic depth
         hidden_states = short_cut + self.drop_path(attn_windows)
 
-        output = self.drop_path(self.mlp(self.norm2(hidden_states))) + hidden_states
+        output = self.drop_path(
+            self.mlp(self.norm2(hidden_states))) + hidden_states
         return output
 
 
@@ -362,6 +416,7 @@ class SwinLayer(nn.Module):
         use_grad_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
+
     def __init__(self, dim, input_resolution, depth, num_heads, window_size, mlp_ratio=4.,
                  qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0., norm_layer=nn.LayerNorm,
                  downsample=None, use_grad_checkpoint=False) -> None:
@@ -377,7 +432,7 @@ class SwinLayer(nn.Module):
             input_resolution=input_resolution,
             num_heads=num_heads,
             window_size=window_size,
-            shift_size= 0 if i%2==0 else window_size//2,
+            shift_size=0 if i % 2 == 0 else window_size//2,
             mlp_ratio=mlp_ratio,
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
@@ -386,7 +441,6 @@ class SwinLayer(nn.Module):
             drop_path=drop_path,
             norm_layer=norm_layer
         ) for i in range(depth)])
-
 
     def forward(self, x):
         pass
@@ -401,8 +455,7 @@ class SwinTransformer(nn.Module):
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: bool = True):
-    #https://huggingface.co/spaces/Roll20/pet_score/blame/main/lib/timm/models/layers/drop.py
-
+    # https://huggingface.co/spaces/Roll20/pet_score/blame/main/lib/timm/models/layers/drop.py
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
 
     This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
@@ -415,7 +468,8 @@ def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: b
     if drop_prob == 0. or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    # work with diff dim tensors, not just 2D ConvNets
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0 and scale_by_keep:
         random_tensor.div_(keep_prob)
@@ -425,6 +479,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: b
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     """
+
     def __init__(self, drop_prob=None, scale_by_keep=True):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
