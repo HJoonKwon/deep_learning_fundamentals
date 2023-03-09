@@ -127,3 +127,13 @@ def test_swin_transformer_block():
     x = torch.randn(4, 56*56, dim)
     y = swin_block(x)
     assert y.shape == (4, 56*56, dim)
+
+
+def test_patch_merging():
+    input_resolution = (56, 56)
+    dim = 48
+    model = PatchMerging(input_resolution, dim)
+    B, H, W, C = 4, *input_resolution, dim
+    x = torch.randn(B, H*W, C)
+    y = model(x)
+    assert y.shape == (B, H//2 * W//2, 2*C)
