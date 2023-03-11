@@ -129,7 +129,7 @@ def test_swin_transformer_block():
     assert y.shape == (4, 56*56, dim)
 
 
-def test_patch_merging():
+def test_patch_merging_einops():
     input_resolution = (56, 56)
     dim = 48
     model = PatchMerging(input_resolution, dim)
@@ -137,3 +137,21 @@ def test_patch_merging():
     x = torch.randn(B, H*W, C)
     y = model(x)
     assert y.shape == (B, H//2 * W//2, 2*C)
+
+    # test einops for patch merging
+    B, H, W, C = 1, 6, 6, 1
+    x = torch.randn(B, H, W, C)
+
+    # einops(@joon9502)
+    x1 = einops.rearrange(x, 'b (nh h) (nw w) c -> (b nh nw) h w c', nh=H//2, nw=W//2)
+    x1 = einops.rearrange(x1, '(b nh nw) h w c -> b (nh nw) (w h c)', b = B, nh=H//2, nw=W//2)
+
+    # original(https://github.com/huggingface/transformers/blob/main/src/transformers/models/swin/modeling_swin.py#L345)
+    p0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C -> top left corner of all patches
+    p1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C -> bottom left of all patches
+    p2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C -> top right
+    p3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C -> bottom right
+    x2 = torch.cat([p0, p1, p2, p3], -1)
+    x2 = x2.view(B, -1, 4 * C)
+    assert x1.shape == x2.shape
+    assert torch.equal(x1, x2)
