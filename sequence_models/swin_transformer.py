@@ -30,10 +30,6 @@ import einops
 from .utils import *
 
 
-def relative_position_index(window_size):
-    pass
-
-
 def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
     """
     Args:
@@ -43,8 +39,9 @@ def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
         windows: (num_windows*B, window_size, window_size, C)
     """
     B, H, W, C = x.shape
+    nh, nw = H//window_size, W//window_size
     windows = einops.rearrange(
-        x, 'b (n1 w1) (n2 w2) c -> (b n1 n2) w1 w2 c', n1=H//window_size, n2=W//window_size)
+        x, 'b (nh h) (nw w) c -> (b nh nw) h w c', nh=nh, nw=nw)
     return windows
 
 
@@ -59,7 +56,8 @@ def window_reverse(windows: torch.Tensor, window_size: int, H: int, W: int) -> t
         x: (B, H, W, C)
     """
     nh, nw = H//window_size, W//window_size
-    x = einops.rearrange(windows, '(b nh nw) h w c -> b (nh h) (nw w) c', nh=nh, nw=nw)
+    x = einops.rearrange(
+        windows, '(b nh nw) h w c -> b (nh h) (nw w) c', nh=nh, nw=nw)
     return x
 
 
@@ -87,8 +85,11 @@ class PatchMerging(nn.Module):
         assert L == H * W, f"Wrong input size {H}x{W} != {L}"
         assert H % 2 == 0 and W % 2 == 0, f"Cannot merge patches since ({H}x{W} are not even)"
         x = einops.rearrange(x, 'b (h w) c -> b h w c', h=H, w=W)
-        x = einops.rearrange(x, 'b (nh h) (nw w) c -> (b nh nw) h w c', nh=H//2, nw=W//2)
-        x = einops.rearrange(x, '(b nh nw) h w c -> b (nh nw) (w h c)', b=B, nh=H//2, nw=W//2) # same arrangement as the original one
+        x = einops.rearrange(
+            x, 'b (nh h) (nw w) c -> (b nh nw) h w c', nh=H//2, nw=W//2)
+        # same arrangement as the original one
+        x = einops.rearrange(
+            x, '(b nh nw) h w c -> b (nh nw) (w h c)', b=B, nh=H//2, nw=W//2)
         x = self.channel_reduction(self.norm_layer(x))
 
         return x
@@ -150,7 +151,7 @@ class PatchEmbedding(nn.Module):
         B, C, H, W = x.shape
         # B x dim_embed x patches_resolution[0] x patches_resolution[1]
         embedded = self.embedding(x)
-        flattened = einops.rearrange(embedded, 'b d ph pw -> b (ph pw) d')
+        flattened = einops.rearrange(embedded, 'b c h w -> b (h w) c')
         if self.norm_layer is not None:
             flattened = self.norm_layer(flattened)
         return flattened
@@ -219,7 +220,7 @@ class WindowMultiHeadSelfAttention(nn.Module):
         # key, query, value -> attention score
         qkv = self.embedding_to_qkv(x)
         query, key, value = tuple(einops.rearrange(
-            qkv, 'b n (k h d) -> k b h n d', k=3, h=self.num_heads))
+            qkv, 'b n (k h c) -> k b h n c', k=3, h=self.num_heads))
         attention_scores = torch.einsum(
             'b h i d, b h j d -> b h i j', query, key) * self.scale
 
@@ -239,11 +240,11 @@ class WindowMultiHeadSelfAttention(nn.Module):
         if mask is not None:
             num_windows = mask.shape[0]
             attention_scores = einops.rearrange(
-                attention_scores, '(num_w B) h i j -> B num_w h i j', num_w=num_windows)
+                attention_scores, '(b n) h i j -> b n h i j', n=num_windows)
             mask = mask.unsqueeze(1).unsqueeze(0)
             attention_scores += mask
             attention_scores = einops.rearrange(
-                attention_scores, 'B num_w h i j -> (num_w B) h i j')
+                attention_scores, 'b n h i j -> (b n) h i j')
 
         attention_probs = self.softmax(attention_scores)
         attention_probs = self.attn_drop(attention_probs)
@@ -331,10 +332,10 @@ class SwinTransformerBlock(nn.Module):
                     area_num += 1
 
             mask_windows = window_partition(
-                image_mask, window_size=self.window_size)  # (N, Wh, Ww, 1)
+                image_mask, window_size=self.window_size)  # (n, h, w, 1)
             mask_windows = einops.rearrange(
-                mask_windows, 'n wh ww c -> n (wh ww c)')
-            # 0 for corresnponding sub-window, (N, Wh*Ww, Wh*Ww)
+                mask_windows, 'n h w c -> n (h w c)')
+            # 0 for corresnponding sub-window, (n, h*w, h*w)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
             attn_mask = attn_mask.masked_fill(
                 attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
@@ -363,9 +364,9 @@ class SwinTransformerBlock(nn.Module):
             shifted_x = x
 
         # partition windows
-        # (B*num_windows, Wh, Ww, C)
+        # (B*num_windows, h, w, C)
         windows = window_partition(x, window_size=self.window_size)
-        windows = einops.rearrange(windows, 'b Wh Ww c -> b (Wh Ww) c')
+        windows = einops.rearrange(windows, 'b h w c -> b (h w) c')
 
         # get attention mask and do shifted window MHS
         attn_mask = self.get_attn_mask(h, w, dtype=shifted_x.dtype)
@@ -375,7 +376,7 @@ class SwinTransformerBlock(nn.Module):
 
         # rearrange attention windows to reverse it to input size
         attn_windows = einops.rearrange(
-            attn_windows, 'b (Wh Ww) c -> b Wh Ww c', Wh=self.window_size, Ww=self.window_size)
+            attn_windows, 'b (h w) c -> b h w c', h=self.window_size, w=self.window_size)
         shifted_attn_windows = window_reverse(
             attn_windows, self.window_size, h, w)
 
@@ -386,7 +387,7 @@ class SwinTransformerBlock(nn.Module):
             attn_windows = shifted_attn_windows
 
         attn_windows = einops.rearrange(
-            attn_windows, 'b Wh Ww c -> b (Wh Ww) c')
+            attn_windows, 'b h w c -> b (h w) c')
 
         # apply stochastic depth
         hidden_states = short_cut + self.drop_path(attn_windows)
