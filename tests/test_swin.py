@@ -70,9 +70,15 @@ def test_window_partition():
 def test_window_reverse():
     B, H, W, C = 4, 224, 224, 3
     ws = H//8
-    windows = torch.randn(B*64, ws, ws, 3)
+    windows = torch.randn(B*64, ws, ws, C)
     x = window_reverse(windows, window_size=ws, H=H, W=W)
     assert x.shape == (B, H, W, C)
+
+    x_o = windows.view(-1, H // ws, W // ws, ws, ws, C)
+    x_o = x_o.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, H, W, C)
+
+    assert torch.equal(x, x_o)
+
 
 def test_window_multi_head_self_attention():
     B, N, C = 4, 16, 64
