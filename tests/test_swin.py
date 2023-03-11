@@ -5,10 +5,10 @@ from sequence_models.swin_transformer import *
 
 def test_patch_embedding():
     batch_size = 4
-    img_size = 224
+    img_size = 28
     patch_dim = 4
     in_channels = 3
-    dim_embed = 512
+    dim_embed = 32
     embedding_module = PatchEmbedding(
         img_size=img_size,
         patch_dim=patch_dim,
@@ -20,8 +20,8 @@ def test_patch_embedding():
     patches_resolution = img_size // patch_dim
     assert output.shape == (batch_size, patches_resolution ** 2, dim_embed)
 
-    img_size = (224, 112)
-    patch_dim = (8, 4)
+    img_size = (28, 14)
+    patch_dim = (7, 7)
     embedding_module = PatchEmbedding(
         img_size=img_size,
         patch_dim=patch_dim,
@@ -35,8 +35,8 @@ def test_patch_embedding():
     num_patches = patches_resolution[0] * patches_resolution[1]
     assert output.shape == (batch_size, num_patches, dim_embed)
 
-    img_size = (224, 112)
-    patch_dim = (8, 4)
+    img_size = (28, 14)
+    patch_dim = (7, 2)
     embedding_module = PatchEmbedding(
         img_size=img_size,
         patch_dim=patch_dim,
@@ -53,10 +53,10 @@ def test_patch_embedding():
 
 
 def test_window_partition():
-    B, H, W, C = 4, 4, 4, 3
+    B, H, W, C = 4, 56, 56, 3
     ws = H//2
     x = torch.randn(B, H, W, C)
-    num_windows = 4
+    num_windows = H//ws * W//ws
     windows = window_partition(x, window_size=ws)
     assert windows.shape == (B*num_windows, ws, ws, C)
 
@@ -68,7 +68,7 @@ def test_window_partition():
 
 
 def test_window_reverse():
-    B, H, W, C = 4, 224, 224, 3
+    B, H, W, C = 4, 56, 56, 3
     ws = H//8
     windows = torch.randn(B*64, ws, ws, C)
     x = window_reverse(windows, window_size=ws, H=H, W=W)
