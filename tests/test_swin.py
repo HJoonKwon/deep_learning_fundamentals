@@ -168,3 +168,34 @@ def test_patch_merging_einops():
     x2 = x2.view(B, -1, 4 * C)
     assert x1.shape == x2.shape
     assert torch.equal(x1, x2)
+
+
+def test_swin_layer():
+    input_resolution = (56, 56)
+    B, H, W, C = 4, *input_resolution, 48
+    depth = 2
+    patch_merge = PatchMerging
+    x = torch.randn(B, H*W, C)
+    num_heads = 4
+    window_size = 7
+    qkv_bias = True
+    qk_scale = None
+    drop = .1
+    attn_drop = .1
+    drop_path = 0.2
+    swin_layer = SwinLayer(
+        dim=C,
+        depth=depth,
+        input_resolution=input_resolution,
+        num_heads=num_heads,
+        window_size=window_size,
+        qkv_bias=qkv_bias,
+        qk_scale=qk_scale,
+        drop=drop,
+        attn_drop=attn_drop,
+        drop_path=drop_path,
+        patch_merge=patch_merge,
+        use_grad_checkpoint=False
+    )
+    y = swin_layer(x)
+    assert y.shape == (B, H//2 * W//2, 2*C)
