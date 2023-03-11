@@ -258,14 +258,6 @@ class WindowMultiHeadSelfAttention(nn.Module):
         return context
 
 
-class ShiftedWindowMultiHeadSelfAttention(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-
-    def forward(self, x):
-        pass
-
-
 class SwinTransformerBlock(nn.Module):
     r""" Swin Transformer Block.
     Args:
