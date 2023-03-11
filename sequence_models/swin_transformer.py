@@ -58,9 +58,8 @@ def window_reverse(windows: torch.Tensor, window_size: int, H: int, W: int) -> t
     Returns:
         x: (B, H, W, C)
     """
-    n1, n2 = H//window_size, W//window_size
-    x = einops.rearrange(windows, '(b n1 n2) w1 w2 c -> b (n1 w1) (n2 w2) c',
-                         w1=window_size, w2=window_size, n1=n1, n2=n2)
+    nh, nw = H//window_size, W//window_size
+    x = einops.rearrange(windows, '(b nh nw) h w c -> b (nh h) (nw w) c', nh=nh, nw=nw)
     return x
 
 
