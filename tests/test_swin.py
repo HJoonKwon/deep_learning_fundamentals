@@ -53,12 +53,19 @@ def test_patch_embedding():
 
 
 def test_window_partition():
-    B, H, W, C = 4, 224, 224, 3
-    ws = H//8
+    B, H, W, C = 4, 4, 4, 3
+    ws = H//2
     x = torch.randn(B, H, W, C)
-    num_windows = 64
+    num_windows = 4
     windows = window_partition(x, window_size=ws)
-    assert windows.shape == (B*num_windows, ws, ws, 3)
+    assert windows.shape == (B*num_windows, ws, ws, C)
+
+    #https://github.com/huggingface/transformers/blob/main/src/transformers/models/swin/modeling_swin.py#L206
+    x = x.view(B, H // ws, ws, W // ws, ws, C)
+    windows_o = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, ws, ws, C)
+    assert windows.shape == windows_o.shape
+    assert torch.equal(windows, windows_o)
+
 
 def test_window_reverse():
     B, H, W, C = 4, 224, 224, 3
