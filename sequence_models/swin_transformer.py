@@ -44,7 +44,7 @@ def window_partition(x: torch.Tensor, window_size: int) -> torch.Tensor:
     """
     B, H, W, C = x.shape
     windows = einops.rearrange(
-        x, 'b (w1 n1) (w2 n2) c -> (b n1 n2) w1 w2 c', w1=window_size, w2=window_size)
+        x, 'b (n1 w1) (n2 w2) c -> (b n1 n2) w1 w2 c', n1=H//window_size, n2=W//window_size)
     return windows
 
 
