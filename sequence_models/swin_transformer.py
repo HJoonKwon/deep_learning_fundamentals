@@ -88,8 +88,8 @@ class PatchMerging(nn.Module):
         assert L == H * W, f"Wrong input size {H}x{W} != {L}"
         assert H % 2 == 0 and W % 2 == 0, f"Cannot merge patches since ({H}x{W} are not even)"
         x = einops.rearrange(x, 'b (h w) c -> b h w c', h=H, w=W)
-        x = einops.rearrange(x, 'b (k1 n1) (k2 n2) c -> b (n1 n2) k1 k2 c', k1=2, k2=2)
-        x = einops.rearrange(x, 'b n k1 k2 c -> b n (k1 k2 c)')
+        x = einops.rearrange(x, 'b (nh h) (nw w) c -> (b nh nw) h w c', nh=H//2, nw=W//2)
+        x = einops.rearrange(x, '(b nh nw) h w c -> b (nh nw) (w h c)', b=B, nh=H//2, nw=W//2) # same arrangement as the original one
         x = self.channel_reduction(self.norm_layer(x))
 
         return x
