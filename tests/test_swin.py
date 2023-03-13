@@ -225,4 +225,4 @@ def test_swin_transformer():
 
     img = torch.randn(B, C, H, W)
     y = model(img)
-    print(y.shape)
+    assert y.shape == (B, num_classes)
