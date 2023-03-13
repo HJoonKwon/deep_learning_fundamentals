@@ -123,8 +123,8 @@ class PatchEmbedding(nn.Module):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_dim = to_2tuple(patch_dim)
-        patches_resolution = [img_size[0] //
-                              patch_dim[0], img_size[1]//patch_dim[1]]
+        patches_resolution = [int(img_size[0] //
+                              patch_dim[0]), int(img_size[1]//patch_dim[1])]
         num_patches = patches_resolution[0] * patches_resolution[1]
         dim_patch = patch_dim[0] * patch_dim[1] * in_channels
         self.img_size = img_size
@@ -145,7 +145,7 @@ class PatchEmbedding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: (B, H, W, C)
+            x: (B, C, H, W)
         Returns:
             flattened: (B, patch_size x patch_size, dim_embed)
         """
@@ -431,7 +431,7 @@ class SwinLayer(nn.Module):
             qk_scale=qk_scale,
             drop=drop,
             attn_drop=attn_drop,
-            drop_path=drop_path,
+            drop_path=drop_path[i] if isinstance(drop_path, collections.abc.Iterable) else drop_path,
             norm_layer=norm_layer
         ) for i in range(depth)])
 
@@ -524,9 +524,9 @@ class SwinTransformer(nn.Module):
         self.layers = nn.ModuleList()
         for i, depth in enumerate(depths):
             swin_layer = SwinLayer(
-                dim=embed_dim,
+                dim=embed_dim * 2 ** i,
                 input_resolution=(
-                    patches_resolution[0] // (2 ** (i-1)), patches_resolution[1] // (2 ** (i-1))
+                    int(patches_resolution[0] // (2 ** i)), int(patches_resolution[1] // (2 ** i))
                     ),
                 depth = depth,
                 num_heads=num_heads[i],
@@ -554,8 +554,7 @@ class SwinTransformer(nn.Module):
 
         for layer in self.layers:
             x = layer(x)
-
-        x = self.norm(x)
+        x = self.norm_layer(x)
         x = self.avg_pool(x.transpose(1, 2))
         x = torch.flatten(x, 1)
         return x
@@ -563,7 +562,7 @@ class SwinTransformer(nn.Module):
     def forward(self, x):
         x = self.forward_features(x)
         x = self.cls_head(x)
-        return x 
+        return x
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False, scale_by_keep: bool = True):
