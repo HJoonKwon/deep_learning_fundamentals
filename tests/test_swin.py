@@ -199,3 +199,30 @@ def test_swin_layer():
     )
     y = swin_layer(x)
     assert y.shape == (B, H//2 * W//2, 2*C)
+
+def test_swin_transformer():
+    B = 4
+    H, W, C = 224, 224, 3
+    num_classes = 10
+    model = SwinTransformer(img_size=224,
+                            patch_dim=4,
+                            in_channels=3,
+                            num_classes=num_classes,
+                            embed_dim=96,
+                            depths=[2, 2, 6, 2],
+                            num_heads=[3, 6, 12, 24],
+                            window_size=7,
+                            mlp_ratio=4,
+                            qkv_bias=True,
+                            qk_scale=None,
+                            drop=0.1,
+                            attn_drop=0.1,
+                            drop_path=0.1,
+                            norm_layer=nn.LayerNorm,
+                            ape=False,
+                            patch_norm=True,
+                            use_grad_checkpoint=False)
+
+    img = torch.randn(B, C, H, W)
+    y = model(img)
+    print(y.shape)
